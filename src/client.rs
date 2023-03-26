@@ -34,12 +34,12 @@ impl Client{
                         // handle a get request
                         println!("Received command get with key : {}", key);
                         stream.write(key.as_bytes()).await.unwrap();
-                        sender.send(());
+                        sender.send(()).await.unwrap();
                     },
                     Msg(Command::Set(key, value), sender) =>{
                         // handle a set request
                         println!("Received command set with (key, value) : ({}, {:?})", key, value.to_ascii_lowercase());
-                        sender.send(());
+                        sender.send(()).await.unwrap();
                     }
                 }
             }
@@ -55,7 +55,13 @@ impl Client{
             println!("Sending request {:?}", c);
             let (tx, mut rx) = channel(1);
             handler.send(Msg(c, tx)).await.unwrap();
+            // wait for the response
             rx.recv().await.unwrap();
         })
+    }
+
+    pub async fn wait_finished(self){
+        drop(self.handler);
+        self.join.await.unwrap();
     }
 }
