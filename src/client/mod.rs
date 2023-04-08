@@ -1,8 +1,9 @@
 use bytes::Bytes;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{Sender, channel};
 use tokio::task::JoinHandle;
 use tokio::net::TcpSocket;
+use tokio::sync::oneshot;
 
 #[derive(Debug)]
 pub enum Command{
@@ -11,7 +12,7 @@ pub enum Command{
 }
 
 #[derive(Debug)]
-struct Msg(Command, Sender<()>);
+struct Msg(Command, oneshot::Sender<()>);
 
 pub struct Client{
     handler : Sender<Msg>,
@@ -34,12 +35,21 @@ impl Client{
                         // handle a get request
                         println!("Received command get with key : {}", key);
                         stream.write(key.as_bytes()).await.unwrap();
-                        sender.send(()).await.unwrap();
+                        let mut buffer = vec![0; 1024];
+                        stream.readable().await;
+                        let res = stream.try_read(&mut buffer);
+                        stream.shutdown().await.unwrap();
+                        if let Ok(n) = res{
+                            println!("Received from server : {}", String::from_utf8(buffer[..n].to_ascii_lowercase()).unwrap());
+                        }else{
+                            println!("{:?}", res);
+                        }
+                        sender.send(()).unwrap();
                     },
                     Msg(Command::Set(key, value), sender) =>{
                         // handle a set request
                         println!("Received command set with (key, value) : ({}, {:?})", key, value.to_ascii_lowercase());
-                        sender.send(()).await.unwrap();
+                        sender.send(()).unwrap();
                     }
                 }
             }
@@ -53,10 +63,10 @@ impl Client{
         let handler = self.handler.clone();
         tokio::spawn(async move{
             println!("Sending request {:?}", c);
-            let (tx, mut rx) = channel(1);
+            let (tx, rx) = oneshot::channel();
             handler.send(Msg(c, tx)).await.unwrap();
             // wait for the response
-            rx.recv().await.unwrap();
+            rx.await.unwrap();
         })
     }
 

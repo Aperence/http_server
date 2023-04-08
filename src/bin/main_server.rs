@@ -1,7 +1,7 @@
 use tokio;
-use http_server::server::Server;
+use http_server::server::server;
 
 #[tokio::main]
 async fn main(){
-    let _server = Server::server("[::1]:8080").await;
+    server("[::1]:8080").await;
 }
